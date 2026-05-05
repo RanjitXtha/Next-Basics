@@ -3,10 +3,13 @@ import { Product } from "../types/types";
 
 async function fetchProducts() {
   const res = await fetch("https://dummyjson.com/products?limit=20", {
-    next: { revalidate: 30 },
+    next: { revalidate: 15 },
   });
+
   const data = await res.json();
-  return data.products as Product[];
+
+  const shuffled = data.products.sort(() => 0.5 - Math.random());
+  return shuffled.slice(0, 5) as Product[];
 }
 
 export default async function ISRProductsPage() {
@@ -14,7 +17,10 @@ export default async function ISRProductsPage() {
 
   return (
     <div>
-      <h1>ISR Example</h1>
+      <h1>ISR Random Products</h1>
+
+      <p>Rendered at: {new Date().toISOString()}</p>
+
       <ul>
         {products.map((product) => (
           <li key={product.id} style={{ marginBottom: "20px" }}>

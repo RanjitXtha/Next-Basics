@@ -21,7 +21,7 @@ export default async function SSRProductsPage() {
                     //prefetch true is defallt. helps in prerendering faster by prefetch js and other stuff. leave it in default i.e trueose
                     //with prefetch truei.e default , it would prefetch those link's js bundles and data fetching ,removing the 5sec delay
                     //prefetch false brings those delay back.
-                    <Link href={`/product/${product.id}`} key={product.id} prefetch={false}>
+                    <Link href={`/product/${product.id}`} key={product.id}>
                         <li style={{ marginBottom: "20px"}}>
                             <b>{product.title}</b>
                             <p>{product.description}</p>

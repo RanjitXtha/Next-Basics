@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import { Product } from "./types/types";
+import Link from "next/link";
 
 export default function CSRProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -22,7 +23,7 @@ export default function CSRProductsPage() {
       <h1>CSR Example</h1>
       <ul>
         {products.map((product) => (
-          <li key={product.id} style={{ marginBottom: "20px" }}>
+          <Link href={`/product/${product.id}`} key={product.id} prefetch={false}>
             <b>{product.title}</b>
             <p>{product.description}</p>
             <Image
@@ -31,7 +32,7 @@ export default function CSRProductsPage() {
               width={150}
               height={150}
             />
-          </li>
+          </Link>
         ))}
       </ul>
     </div>

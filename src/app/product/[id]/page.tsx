@@ -6,18 +6,23 @@ function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export async function generateMetadata({params}:{params:{id:string}}):Promise<Metadata>{
-  const {id} = params;
+// params is now a Promise
+type Props = {
+  params: Promise<{
+    id: string;
+  }>;
+};
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { id } = await params;
 
   const res = await fetch(`https://dummyjson.com/products/${id}`);
+  const product: Product = await res.json();
 
-  const product:Product = await res.json();
-
-  return{
-    title:product.title,
-    description:product.description
-  }
-
+  return {
+    title: product.title,
+    description: product.description,
+  };
 }
 
 export async function generateStaticParams() {
@@ -29,19 +34,24 @@ export async function generateStaticParams() {
   }));
 }
 
-export default async function ProductPage({ params }: { params: { id: string } }) {
-  const { id } = params; 
+export default async function ProductPage({ params }: Props) {
+  const { id } = await params;
 
   const res = await fetch(`https://dummyjson.com/products/${id}`);
   const product: Product = await res.json();
 
-  await delay(5000); 
+  await delay(5000);
 
   return (
     <div>
       <h2>{product.title}</h2>
       <p>{product.description}</p>
-      <Image src={product.thumbnail} width={150} height={150} alt={product.title} />
+      <Image
+        src={product.thumbnail}
+        width={150}
+        height={150}
+        alt={product.title}
+      />
     </div>
   );
 }
