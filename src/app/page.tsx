@@ -18,6 +18,7 @@ export default function CSRProductsPage() {
     getData();
   }, []);
 
+//sample commit to test release.io pushes 
   return (
     <div>
       <h1>CSR Example</h1>
