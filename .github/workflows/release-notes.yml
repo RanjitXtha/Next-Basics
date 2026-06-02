@@ -1,0 +1,21 @@
+name: Send Branch Updates to ReleaseNotes
+on:
+  push:
+    branches:
+      - main
+      - staging
+      - development
+
+jobs:
+  notify_release_notes:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Custom Payload
+        run: |
+          curl -X POST "${{ secrets.RELEASENOTES_WEBHOOK_URL }}" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "title": "Deployment to ${{ github.ref_name }} branch",
+            "description": "Commit by ${{ github.actor }}: ${{ github.event.head_commit.message }}",
+            "status": "Done"
+          }'
