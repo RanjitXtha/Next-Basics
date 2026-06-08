@@ -1,92 +1,36 @@
 name: Sync GitHub Merge to ReleaseNotes Draft
+
 on:
   pull_request:
     branches:
       - main
     types:
       - closed
+
 jobs:
   append-to-draft:
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     steps:
-      - name: Process and Append Release Note via Node.js
-        uses: actions/github-script@v7
+      - name: Generate Unique Weekly ID
+        id: get_id
+        run: echo "weekly_id=draft-$(date +'%Y-W%V')" >> $GITHUB_OUTPUT
+
+      - name: Send PR data to ReleaseNotes.io Notes Bucket
         env:
-          RELEASENOTES_API_KEY: ${{ secrets.RELEASENOTES_API_KEY }}
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
-        with:
-          script: |
-            // 1. Calculate the unique weekly ID (matching draft-YYYY-Www format)
-            const today = new Date();
-            const year = today.getFullYear();
-            const target = new Date(today.valueOf());
-            const dayNr = (today.getDay() + 6) % 7;
-            target.setDate(target.getDate() - dayNr + 3);
-            const firstThursday = target.valueOf();
-            target.setMonth(0, 1);
-            if (target.getDay() !== 4) {
-              target.setMonth(0, 1 + ((4 - target.getDay() + 7) % 7));
-            }
-            const weekNum = 1 + Math.ceil((firstThursday - target) / 604800000);
-            const paddedWeek = String(weekNum).padStart(2, '0');
-            const weeklyId = `draft-${year}-W${paddedWeek}`;
-
-            console.log(`Targeting unique week ID: ${weeklyId}`);
-
-            // 2. Fetch existing releases
-            const res = await fetch('https://api.releasenotes.io/api/v1/projects/11453/releases', {
-              headers: { 'Authorization': `Bearer ${process.env.RELEASENOTES_API_KEY}` }
-            });
-            const payload = await res.json();
-
-            // 3. Find if our weekly draft already exists
-            const existingDraft = payload.data?.find(item => item.external_id === weeklyId);
-
-            const newLine = `<li>GitHub PR: ${process.env.PR_TITLE} (#${process.env.PR_NUMBER})</li>`;
-            let combinedDesc = '';
-            let method = 'POST';
-            let url = 'https://api.releasenotes.io/api/v1/projects/11453/releases';
-
-            if (existingDraft) {
-              // ✅ Draft exists — PATCH it using its ID, append to existing description
-              method = 'PATCH';
-              url = `https://api.releasenotes.io/api/v1/projects/11453/releases/${existingDraft.id}`;
-
-              const currentDesc = existingDraft.description || '';
-              if (currentDesc.includes('</ul>')) {
-                combinedDesc = currentDesc.replace('</ul>', `${newLine}\n</ul>`);
-              } else {
-                combinedDesc = `${currentDesc}\n<ul>\n${newLine}\n</ul>`;
-              }
-
-              console.log(`Draft found (id: ${existingDraft.id}), appending via PATCH...`);
-            } else {
-              // 🆕 No draft yet — POST to create a new one
-              combinedDesc = `<h4>new</h4>\n<ul>\n${newLine}\n</ul>`;
-              console.log('No existing draft, creating via POST...');
-            }
-
-            // 4. Send the request (POST or PATCH)
-            const postRes = await fetch(url, {
-              method,
-              headers: {
-                'Authorization': `Bearer ${process.env.RELEASENOTES_API_KEY}`,
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({
-                external_id: weeklyId,
-                version: "Next Upcoming Release",
-                title: "GithubDraft",
-                published: false,
-                description: combinedDesc,
-                type: "update"
-              })
-            });
-
-            if (!postRes.ok) {
-              throw new Error(`API Request failed with status ${postRes.method} ${url} — ${postRes.status}: ${await postRes.text()}`);
-            }
-
-            console.log(`Successfully ${existingDraft ? 'updated' : 'created'} draft release!`);
+          WEEKLY_ID: ${{ steps.get_id.outputs.weekly_id }}
+        run: |
+          curl --request POST \
+            --url https://releasenotes.io \
+            --header 'Authorization: Bearer ${{ secrets.RELEASENOTES_API_KEY }}' \
+            --header 'Content-Type: application/json' \
+            --data "{
+              \"release_external_id\": \"$WEEKLY_ID\",
+              \"release_version\": \"Next Upcoming Release\",
+              \"release_title\": \"GithubDraft\",
+              \"title\": \"GitHub PR (#$PR_NUMBER)\",
+              \"description\": \"$PR_TITLE\",
+              \"type\": \"update\"
+            }"
