@@ -23,9 +23,10 @@ jobs:
             --header 'Authorization: Bearer ${{ secrets.RELEASENOTES_API_KEY }}' \
             --header 'Content-Type: application/json' \
             --data '{
-              "external_id": "${{ steps.get_id.outputs.weekly_id }}",
-              "version": "Next Upcoming Release",
-              "title": "Github rleease",
-              "published": false,
-              "description": "• GitHub PR: ${{ github.event.pull_request.title }} (#${{ github.event.pull_request.number }})<br>"
+            "external_id": "test-4",
+            "version": "v1.1.0-test",
+            "title": "GithubDraft",
+            "published": false,
+            "description": "<h4>new new</h4><ul><li>Successfully validated the API endpoint layout directly from Postman.</li></ul>",
+            "type": "update"
             }'
