@@ -16,21 +16,62 @@ jobs:
         id: get_id
         run: echo "weekly_id=draft-$(date +'%Y-W%V')" >> $GITHUB_OUTPUT
 
-      - name: Send PR data to ReleaseNotes.io
+      - name: Fetch Existing Draft Content
+        id: fetch_draft
+        env:
+          WEEKLY_ID: ${{ steps.get_id.outputs.weekly_id }}
+        run: |
+          # 1. Fetch all releases from the API
+          RESPONSE=$(curl -s --request GET \
+            --url "https://releasenotes.io" \
+            --header "Authorization: Bearer ${{ secrets.RELEASENOTES_API_KEY }}")
+
+          # 2. Search if a release matches our dynamic weekly external_id
+          # We extract the description field safely using jq
+          EXISTING_DESC=$(echo "$RESPONSE" | jq -r --arg ext_id "$WEEKLY_ID" '.data[] | select(.external_id == $ext_id) | .description' 2>/dev/null || echo "")
+
+          # 3. Handle multiline and escape characters safely for the next step
+          EOF=$(dd if=/dev/urandom bs=15 count=1 2>/dev/null | base64)
+          echo "old_desc<<$EOF" >> $GITHUB_OUTPUT
+          echo "$EXISTING_DESC" >> $GITHUB_OUTPUT
+          echo "$EOF" >> $GITHUB_OUTPUT
+
+      - name: Send Appended Data to ReleaseNotes.io
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           WEEKLY_ID: ${{ steps.get_id.outputs.weekly_id }}
+          OLD_DESCRIPTION: ${{ steps.fetch_draft.outputs.old_desc }}
         run: |
+          # Define the new line entry
+          NEW_LINE="<li>GitHub PR: $PR_TITLE (#$PR_NUMBER)</li>"
+
+          # Determine the combined payload body structure
+          if [ -z "$OLD_DESCRIPTION" ] || [ "$OLD_DESCRIPTION" = "null" ]; then
+            # Brand new draft structure
+            COMBINED_DESC="<h4>New Updates This Week</h4><ul>$NEW_LINE</ul>"
+          else
+            # If the draft already has content, find the closing </ul> tag and insert the new line right before it
+            if [[ "$OLD_DESCRIPTION" == *"</ul>"* ]]; then
+              COMBINED_DESC="${OLD_DESCRIPTION%</ul>}$NEW_LINE</ul>"
+            else
+              # Fallback layout concatenation
+              COMBINED_DESC="$OLD_DESCRIPTION<br>$NEW_LINE"
+            fi
+          fi
+
+          # 4. Transmit the complete accumulated string payload back to the server
           curl --request POST \
-            --url https://api.releasenotes.io/api/v1/projects/11453/releases \
+            --url https://releasenotes.io \
             --header 'Authorization: Bearer ${{ secrets.RELEASENOTES_API_KEY }}' \
             --header 'Content-Type: application/json' \
-            --data "{
-              \"external_id\": \"$WEEKLY_ID\",
-              \"version\": \"Next Upcoming Release\",
-              \"title\": \"GithubDraft\",
-              \"published\": false,
-              \"description\": \"<h4>new</h4><ul><li>GitHub PR: $PR_TITLE (#$PR_NUMBER)</li></ul>\",
-              \"type\": \"update\"
-            }"
+            --data-binary @- <<EOF
+            {
+              "external_id": "$WEEKLY_ID",
+              "version": "Next Upcoming Release",
+              "title": "GithubDraft",
+              "published": false,
+              "description": $(echo -n "$COMBINED_DESC" | jq -R .),
+              "type": "update"
+            }
+          EOF
