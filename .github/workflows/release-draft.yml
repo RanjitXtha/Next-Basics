@@ -17,16 +17,20 @@ jobs:
         run: echo "weekly_id=draft-$(date +'%Y-W%V')" >> $GITHUB_OUTPUT
 
       - name: Send PR data to ReleaseNotes.io
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          WEEKLY_ID: ${{ steps.get_id.outputs.weekly_id }}
         run: |
           curl --request POST \
-            --url https://releasenotes.io \
+            --url https://api.releasenotes.io/api/v1/projects/11453/releases \
             --header 'Authorization: Bearer ${{ secrets.RELEASENOTES_API_KEY }}' \
             --header 'Content-Type: application/json' \
-            --data '{
-            "external_id": "test-4",
-            "version": "v1.1.0-test",
-            "title": "GithubDraft",
-            "published": false,
-            "description": "<h4>new new</h4><ul><li>Successfully validated the API endpoint layout directly from Postman.</li></ul>",
-            "type": "update"
-            }'
+            --data "{
+              \"external_id\": \"$WEEKLY_ID\",
+              \"version\": \"Next Upcoming Release\",
+              \"title\": \"GithubDraft\",
+              \"published\": false,
+              \"description\": \"<h4>new</h4><ul><li>GitHub PR: $PR_TITLE (#$PR_NUMBER)</li></ul>\",
+              \"type\": \"update\"
+            }"
