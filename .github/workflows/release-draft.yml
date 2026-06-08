@@ -1,36 +1,36 @@
-name: Sync GitHub Merge to ReleaseNotes Draft
+# name: Sync GitHub Merge to ReleaseNotes Draft
 
-on:
-  pull_request:
-    branches:
-      - main
-    types:
-      - closed
+# on:
+#   pull_request:
+#     branches:
+#       - main
+#     types:
+#       - closed
 
-jobs:
-  append-to-draft:
-    if: github.event.pull_request.merged == true
-    runs-on: ubuntu-latest
-    steps:
-      - name: Generate Unique Weekly ID
-        id: get_id
-        run: echo "weekly_id=draft-$(date +'%Y-W%V')" >> $GITHUB_OUTPUT
+# jobs:
+#   append-to-draft:
+#     if: github.event.pull_request.merged == true
+#     runs-on: ubuntu-latest
+#     steps:
+#       - name: Generate Unique Weekly ID
+#         id: get_id
+#         run: echo "weekly_id=draft-$(date +'%Y-W%V')" >> $GITHUB_OUTPUT
 
-      - name: Send PR data to ReleaseNotes.io Notes Bucket
-        env:
-          PR_TITLE: ${{ github.event.pull_request.title }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          WEEKLY_ID: ${{ steps.get_id.outputs.weekly_id }}
-        run: |
-          curl --request POST \
-            --url https://releasenotes.io \
-            --header 'Authorization: Bearer ${{ secrets.RELEASENOTES_API_KEY }}' \
-            --header 'Content-Type: application/json' \
-            --data "{
-              \"release_external_id\": \"$WEEKLY_ID\",
-              \"release_version\": \"Next Upcoming Release\",
-              \"release_title\": \"GithubDraft\",
-              \"title\": \"GitHub PR (#$PR_NUMBER)\",
-              \"description\": \"$PR_TITLE\",
-              \"type\": \"update\"
-            }"
+#       - name: Send PR data to ReleaseNotes.io Notes Bucket
+#         env:
+#           PR_TITLE: ${{ github.event.pull_request.title }}
+#           PR_NUMBER: ${{ github.event.pull_request.number }}
+#           WEEKLY_ID: ${{ steps.get_id.outputs.weekly_id }}
+#         run: |
+#           curl --request POST \
+#             --url https://releasenotes.io \
+#             --header 'Authorization: Bearer ${{ secrets.RELEASENOTES_API_KEY }}' \
+#             --header 'Content-Type: application/json' \
+#             --data "{
+#               \"release_external_id\": \"$WEEKLY_ID\",
+#               \"release_version\": \"Next Upcoming Release\",
+#               \"release_title\": \"GithubDraft\",
+#               \"title\": \"GitHub PR (#$PR_NUMBER)\",
+#               \"description\": \"$PR_TITLE\",
+#               \"type\": \"update\"
+#             }"
