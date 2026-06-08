@@ -14,33 +14,29 @@ jobs:
     steps:
       - name: Fetch and Append PR Data to ReleaseNotes.io
         run: |
-          # 1. Fetch all releases from the API
+          # 1. Fetch all existing releases
           RESPONSE=$(curl --silent --request GET \
             --url https://releasenotes.io \
             --header 'Authorization: Bearer ${{ secrets.RELEASENOTES_API_KEY }}' \
             --header 'Content-Type: application/json')
 
-          # 2. Extract the description of the existing draft matching our external_id
-          # If no matching draft is found, initialize an empty string baseline
+          # 2. Look for an existing draft with our external_id
           EXISTING_DESCRIPTION=$(echo "$RESPONSE" | jq -r '.data[] | select(.external_id == "current-sprint") | .description' || echo "")
 
-          # 3. Format the new PR text item as an HTML list element
-          NEW_LINE="<li>GitHub PR: ${{ github.event.pull_request.title }} (#${{ github.event.pull_request.number }})</li>"
+          # 3. Create the new line text
+          NEW_LINE="• GitHub PR: ${{ github.event.pull_request.title }} (#${{ github.event.pull_request.number }})<br>"
 
-          # 4. Handle structural text formatting
+          # 4. If nothing exists, start fresh. If it exists, append new data to the bottom.
           if [ -z "$EXISTING_DESCRIPTION" ] || [ "$EXISTING_DESCRIPTION" = "null" ]; then
-            # If starting a brand new draft, wrap the item inside an unordered HTML list
-            UPDATED_DESCRIPTION="<h2>Merged Pull Requests:</h2><ul>${NEW_LINE}</ul>"
+            UPDATED_DESCRIPTION="$NEW_LINE"
           else
-            # If the draft exists, split the string at the closing list tag to cleanly insert the new item
-            UPDATED_DESCRIPTION=$(echo "$EXISTING_DESCRIPTION" | sed "s|<\/ul>|${NEW_LINE}</ul>|")
+            UPDATED_DESCRIPTION="${EXISTING_DESCRIPTION}${NEW_LINE}"
           fi
 
-          # 5. Push the compiled text data structure back to ReleaseNotes.io
-          # Use jq to construct valid, injection-safe JSON payloads
+          # 5. Build the final JSON package securely
           PAYLOAD=$(jq -n \
             --arg ext_id "current-sprint" \
-            --arg title "Unpublished Team Updates" \
+            --arg title "Github merge" \
             --arg version "Next Upcoming Release" \
             --arg desc "$UPDATED_DESCRIPTION" \
             '{
@@ -52,6 +48,7 @@ jobs:
               description: $desc
             }')
 
+          # 6. POST the data back to ReleaseNotes.io
           curl --request POST \
             --url https://releasenotes.io \
             --header 'Authorization: Bearer ${{ secrets.RELEASENOTES_API_KEY }}' \
