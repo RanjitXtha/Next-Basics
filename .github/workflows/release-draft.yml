@@ -15,7 +15,7 @@ jobs:
       - name: Send PR data to ReleaseNotes.io
         run: |
           curl --request POST \
-            --url https://releasenotes.io \
+            --url https://api.releasenotes.io/api/v1/projects/11453/releases \
             --header 'Authorization: Bearer ${{ secrets.RELEASENOTES_API_KEY }}' \
             --header 'Content-Type: application/json' \
             --data '{
@@ -23,5 +23,7 @@ jobs:
               "version": "Next Upcoming Release",
               "title": "Unpublished Team Updates",
               "published": false,
-              "body": "• GitHub PR: ${{ github.event.pull_request.title }} (#${{ github.event.pull_request.number }})<br>"
+              "body": "• GitHub PR: ${{ github.event.pull_request.title }} (#${{ github.event.pull_request.number }})<br>",
+              "release_at": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'",
+              "type": "update"
             }'
