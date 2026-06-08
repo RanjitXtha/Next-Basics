@@ -1,12 +1,10 @@
 name: Sync GitHub Merge to ReleaseNotes Draft
-
 on:
   pull_request:
     branches:
       - main
     types:
       - closed
-
 jobs:
   append-to-draft:
     if: github.event.pull_request.merged == true
@@ -20,12 +18,9 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
         with:
           script: |
-            const crypto = require('crypto');
-            
             // 1. Calculate the unique weekly ID (matching draft-YYYY-Www format)
             const today = new Date();
             const year = today.getFullYear();
-            // Calculate simple ISO week number
             const target = new Date(today.valueOf());
             const dayNr = (today.getDay() + 6) % 7;
             target.setDate(target.getDate() - dayNr + 3);
@@ -37,37 +32,45 @@ jobs:
             const weekNum = 1 + Math.ceil((firstThursday - target) / 604800000);
             const paddedWeek = String(weekNum).padStart(2, '0');
             const weeklyId = `draft-${year}-W${paddedWeek}`;
-            
+
             console.log(`Targeting unique week ID: ${weeklyId}`);
 
-            // 2. Fetch existing releases from the endpoint
+            // 2. Fetch existing releases
             const res = await fetch('https://api.releasenotes.io/api/v1/projects/11453/releases', {
               headers: { 'Authorization': `Bearer ${process.env.RELEASENOTES_API_KEY}` }
             });
             const payload = await res.json();
-            
-            // 3. Find if our weekly draft already exists in the collection
-            const existingDraft = payload.data?.find(item => item.external_id === weeklyId);
-            let combinedDesc = '';
-            const newLine = `<li>GitHub PR: ${process.env.PR_TITLE} (#${process.env.PR_NUMBER})</li>`;
 
-            if (!existingDraft || !existingDraft.description) {
-              // Brand new draft template layout for the week
-              combinedDesc = `<h4>new</h4>\n<ul>\n${newLine}\n</ul>`;
-            } else {
-              const currentDesc = existingDraft.description;
-              // Safely find the closing </ul> tag regardless of white space or newlines
+            // 3. Find if our weekly draft already exists
+            const existingDraft = payload.data?.find(item => item.external_id === weeklyId);
+
+            const newLine = `<li>GitHub PR: ${process.env.PR_TITLE} (#${process.env.PR_NUMBER})</li>`;
+            let combinedDesc = '';
+            let method = 'POST';
+            let url = 'https://api.releasenotes.io/api/v1/projects/11453/releases';
+
+            if (existingDraft) {
+              // ✅ Draft exists — PATCH it using its ID, append to existing description
+              method = 'PATCH';
+              url = `https://api.releasenotes.io/api/v1/projects/11453/releases/${existingDraft.id}`;
+
+              const currentDesc = existingDraft.description || '';
               if (currentDesc.includes('</ul>')) {
                 combinedDesc = currentDesc.replace('</ul>', `${newLine}\n</ul>`);
               } else {
-                combinedDesc = `${currentDesc}\n${newLine}`;
+                combinedDesc = `${currentDesc}\n<ul>\n${newLine}\n</ul>`;
               }
+
+              console.log(`Draft found (id: ${existingDraft.id}), appending via PATCH...`);
+            } else {
+              // 🆕 No draft yet — POST to create a new one
+              combinedDesc = `<h4>new</h4>\n<ul>\n${newLine}\n</ul>`;
+              console.log('No existing draft, creating via POST...');
             }
 
-            // 4. Dispatch the compiled data block back to ReleaseNotes.io
-            console.log("Sending updated description payload...");
-            const postRes = await fetch('https://api.releasenotes.io/api/v1/projects/11453/releases', {
-              method: 'POST',
+            // 4. Send the request (POST or PATCH)
+            const postRes = await fetch(url, {
+              method,
               headers: {
                 'Authorization': `Bearer ${process.env.RELEASENOTES_API_KEY}`,
                 'Content-Type': 'application/json'
@@ -83,6 +86,7 @@ jobs:
             });
 
             if (!postRes.ok) {
-              throw new Error(`API Request failed with status code ${postRes.status}: ${await postRes.text()}`);
+              throw new Error(`API Request failed with status ${postRes.method} ${url} — ${postRes.status}: ${await postRes.text()}`);
             }
-            console.log("Successfully saved note to timeline!");
+
+            console.log(`Successfully ${existingDraft ? 'updated' : 'created'} draft release!`);
