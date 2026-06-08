@@ -12,66 +12,77 @@ jobs:
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     steps:
-      - name: Generate Unique Weekly ID
-        id: get_id
-        run: echo "weekly_id=draft-$(date +'%Y-W%V')" >> $GITHUB_OUTPUT
-
-      - name: Fetch Existing Draft Content
-        id: fetch_draft
+      - name: Process and Append Release Note via Node.js
+        uses: actions/github-script@v7
         env:
-          WEEKLY_ID: ${{ steps.get_id.outputs.weekly_id }}
-        run: |
-          # 1. Fetch all releases from the API
-          RESPONSE=$(curl -s --request GET \
-            --url "https://releasenotes.io" \
-            --header "Authorization: Bearer ${{ secrets.RELEASENOTES_API_KEY }}")
-
-          # 2. Search if a release matches our dynamic weekly external_id
-          # We extract the description field safely using jq
-          EXISTING_DESC=$(echo "$RESPONSE" | jq -r --arg ext_id "$WEEKLY_ID" '.data[] | select(.external_id == $ext_id) | .description' 2>/dev/null || echo "")
-
-          # 3. Handle multiline and escape characters safely for the next step
-          EOF=$(dd if=/dev/urandom bs=15 count=1 2>/dev/null | base64)
-          echo "old_desc<<$EOF" >> $GITHUB_OUTPUT
-          echo "$EXISTING_DESC" >> $GITHUB_OUTPUT
-          echo "$EOF" >> $GITHUB_OUTPUT
-
-      - name: Send Appended Data to ReleaseNotes.io
-        env:
+          RELEASENOTES_API_KEY: ${{ secrets.RELEASENOTES_API_KEY }}
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
-          WEEKLY_ID: ${{ steps.get_id.outputs.weekly_id }}
-          OLD_DESCRIPTION: ${{ steps.fetch_draft.outputs.old_desc }}
-        run: |
-          # Define the new line entry
-          NEW_LINE="<li>GitHub PR: $PR_TITLE (#$PR_NUMBER)</li>"
-
-          # Determine the combined payload body structure
-          if [ -z "$OLD_DESCRIPTION" ] || [ "$OLD_DESCRIPTION" = "null" ]; then
-            # Brand new draft structure
-            COMBINED_DESC="<h4>New Updates This Week</h4><ul>$NEW_LINE</ul>"
-          else
-            # If the draft already has content, find the closing </ul> tag and insert the new line right before it
-            if [[ "$OLD_DESCRIPTION" == *"</ul>"* ]]; then
-              COMBINED_DESC="${OLD_DESCRIPTION%</ul>}$NEW_LINE</ul>"
-            else
-              # Fallback layout concatenation
-              COMBINED_DESC="$OLD_DESCRIPTION<br>$NEW_LINE"
-            fi
-          fi
-
-          # 4. Transmit the complete accumulated string payload back to the server
-          curl --request POST \
-            --url https://releasenotes.io \
-            --header 'Authorization: Bearer ${{ secrets.RELEASENOTES_API_KEY }}' \
-            --header 'Content-Type: application/json' \
-            --data-binary @- <<EOF
-            {
-              "external_id": "$WEEKLY_ID",
-              "version": "Next Upcoming Release",
-              "title": "GithubDraft",
-              "published": false,
-              "description": $(echo -n "$COMBINED_DESC" | jq -R .),
-              "type": "update"
+        with:
+          script: |
+            const crypto = require('crypto');
+            
+            // 1. Calculate the unique weekly ID (matching draft-YYYY-Www format)
+            const today = new Date();
+            const year = today.getFullYear();
+            // Calculate simple ISO week number
+            const target = new Date(today.valueOf());
+            const dayNr = (today.getDay() + 6) % 7;
+            target.setDate(target.getDate() - dayNr + 3);
+            const firstThursday = target.valueOf();
+            target.setMonth(0, 1);
+            if (target.getDay() !== 4) {
+              target.setMonth(0, 1 + ((4 - target.getDay() + 7) % 7));
             }
-          EOF
+            const weekNum = 1 + Math.ceil((firstThursday - target) / 604800000);
+            const paddedWeek = String(weekNum).padStart(2, '0');
+            const weeklyId = `draft-${year}-W${paddedWeek}`;
+            
+            console.log(`Targeting unique week ID: ${weeklyId}`);
+
+            // 2. Fetch existing releases from the endpoint
+            const res = await fetch('https://api.releasenotes.io/api/v1/projects/11453/releases', {
+              headers: { 'Authorization': `Bearer ${process.env.RELEASENOTES_API_KEY}` }
+            });
+            const payload = await res.json();
+            
+            // 3. Find if our weekly draft already exists in the collection
+            const existingDraft = payload.data?.find(item => item.external_id === weeklyId);
+            let combinedDesc = '';
+            const newLine = `<li>GitHub PR: ${process.env.PR_TITLE} (#${process.env.PR_NUMBER})</li>`;
+
+            if (!existingDraft || !existingDraft.description) {
+              // Brand new draft template layout for the week
+              combinedDesc = `<h4>new</h4>\n<ul>\n${newLine}\n</ul>`;
+            } else {
+              const currentDesc = existingDraft.description;
+              // Safely find the closing </ul> tag regardless of white space or newlines
+              if (currentDesc.includes('</ul>')) {
+                combinedDesc = currentDesc.replace('</ul>', `${newLine}\n</ul>`);
+              } else {
+                combinedDesc = `${currentDesc}\n${newLine}`;
+              }
+            }
+
+            // 4. Dispatch the compiled data block back to ReleaseNotes.io
+            console.log("Sending updated description payload...");
+            const postRes = await fetch('https://api.releasenotes.io/api/v1/projects/11453/releases', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${process.env.RELEASENOTES_API_KEY}`,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                external_id: weeklyId,
+                version: "Next Upcoming Release",
+                title: "GithubDraft",
+                published: false,
+                description: combinedDesc,
+                type: "update"
+              })
+            });
+
+            if (!postRes.ok) {
+              throw new Error(`API Request failed with status code ${postRes.status}: ${await postRes.text()}`);
+            }
+            console.log("Successfully saved note to timeline!");
