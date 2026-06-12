@@ -19,7 +19,7 @@ export default function CSRProductsPage() {
   }, []);
 
 //sample commit to test release.io pushes -1
-  //test - 26 changes
+  //test - 27 changes
   return (
     <div>
       <h1>CSR Example</h1>
