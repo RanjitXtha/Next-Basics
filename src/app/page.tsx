@@ -18,7 +18,7 @@ export default function CSRProductsPage() {
     getData();
   }, []);
 
-//sample commit to test release.io pushes 
+//sample commit to test release.io pushes -1
   //test - 26 changes
   return (
     <div>
